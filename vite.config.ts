@@ -24,7 +24,7 @@ export default defineConfig({
         { src: 'manifest.json', dest: '.' },
         { src: 'src/popup/popup.html', dest: '.' },
         { src: 'src/popup/popup.css', dest: '.' },
-        { src: 'public/*.svg', dest: '.' },
+        { src: 'public/*.png', dest: '.' },
       ],
     }),
   ],
