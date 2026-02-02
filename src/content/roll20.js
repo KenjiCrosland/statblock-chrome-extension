@@ -304,6 +304,15 @@
         if (!(await waitForCharsheet())) {
             throw new Error('#charsheet not found');
         }
+        // Check if a creature is already filled in
+        const nameField = document.querySelector('input[name="attr_npc_name"]');
+        if (nameField && nameField.value.trim() !== '') {
+            const existingName = nameField.value.trim();
+            log(`Sheet already has a creature: "${existingName}"`);
+            throw new Error(`This sheet already has "${existingName}" filled in. ` +
+                `Roll20 doesn't support overwriting existing data cleanly. ` +
+                `Please create a new character at https://app.roll20.net/characters or delete this one first.`);
+        }
         // Basic info
         await fillFieldByName('attr_npc_name', monster.name);
         await fillFieldByName('attr_npc_type', monster.type_and_alignment || '');
