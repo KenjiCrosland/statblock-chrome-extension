@@ -1,0 +1,47 @@
+{
+  "manifest_version": 3,
+  "name": "StatBlock Auto-Fill",
+  "version": "1.0.0",
+  "description": "Sync statblocks from cros.land and auto-fill Roll20 monster sheets",
+  "permissions": [
+    "storage",
+    "activeTab",
+    "tabs"
+  ],
+  "host_permissions": [
+    "https://cros.land/*",
+    "https://app.roll20.net/*",
+    "https://storage.googleapis.com/*"
+  ],
+  "content_scripts": [
+    {
+      "matches": [
+        "https://cros.land/*"
+      ],
+      "js": [
+        "content-crosland.js"
+      ],
+      "run_at": "document_idle"
+    },
+    {
+      "matches": [
+        "https://app.roll20.net/*",
+        "https://storage.googleapis.com/*"
+      ],
+      "js": [
+        "content-roll20.js"
+      ],
+      "run_at": "document_idle",
+      "all_frames": true
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "StatBlock Sync Status"
+  },
+  "icons": {
+    "16": "icon-16.svg",
+    "48": "icon-48.svg",
+    "128": "icon-128.svg"
+  }
+}

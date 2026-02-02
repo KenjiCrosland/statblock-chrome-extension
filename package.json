@@ -1,0 +1,17 @@
+{
+  "name": "statblock-chrome-extension",
+  "version": "1.0.0",
+  "description": "Chrome extension to sync cros.land statblocks and auto-fill Roll20 monster sheets",
+  "type": "module",
+  "scripts": {
+    "dev": "vite build --watch --mode development",
+    "build": "tsc && vite build",
+    "type-check": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.268",
+    "typescript": "^5.3.3",
+    "vite": "^5.0.11",
+    "vite-plugin-static-copy": "^1.0.0"
+  }
+}
