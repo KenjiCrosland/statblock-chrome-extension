@@ -53,6 +53,29 @@ function getMonstersFromLocalStorage(): any {
 }
 
 /**
+ * Get normalized monster data for change detection
+ * Ignores metadata fields that change frequently (timestamps, counts)
+ */
+function getNormalizedMonsterData(monsters: any): string {
+  if (!monsters || typeof monsters !== 'object') {
+    return '';
+  }
+
+  // Create a copy without metadata fields
+  const normalized: any = {};
+
+  for (const key in monsters) {
+    // Skip metadata fields that update frequently
+    if (key === 'generationCount' || key === 'firstGenerationTime' || key === 'lastGenerationTime') {
+      continue;
+    }
+    normalized[key] = monsters[key];
+  }
+
+  return JSON.stringify(normalized);
+}
+
+/**
  * Sync monsters to chrome.storage.sync
  * @returns true if data was synced, false if no changes
  */
@@ -65,8 +88,8 @@ async function syncMonsters(showNotification = true): Promise<boolean> {
       return false;
     }
 
-    // Check if data has changed since last sync
-    const currentData = JSON.stringify(monsters);
+    // Check if actual monster data has changed (ignore metadata)
+    const currentData = getNormalizedMonsterData(monsters);
     if (currentData === lastSyncedData) {
       log('No changes detected, skipping sync');
       return false;
@@ -244,6 +267,21 @@ function setupFormDetection(): void {
     }
   }, true);
 }
+
+/**
+ * Listen for sync requests from popup
+ */
+chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {
+  if (message.action === 'syncNow') {
+    log('Sync requested by popup');
+    syncMonsters(false).then((changed) => {
+      sendResponse({ success: true, changed });
+    }).catch((error) => {
+      sendResponse({ success: false, error: error.message });
+    });
+    return true; // Indicates async response
+  }
+});
 
 /**
  * Initialize

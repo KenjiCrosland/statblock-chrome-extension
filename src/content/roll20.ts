@@ -118,6 +118,30 @@
     await sleep(500);
   }
 
+  // Check a checkbox - set property + fire events
+  async function checkCheckbox(checkbox: HTMLInputElement): Promise<boolean> {
+    if (checkbox.checked) return true;
+
+    // Try .click() first (works for attack checkboxes in repeating rows)
+    checkbox.click();
+    await sleep(500);
+    if (checkbox.checked) {
+      log('Checkbox checked via .click()');
+      return true;
+    }
+
+    // Fall back to setting property + firing events
+    checkbox.checked = true;
+    checkbox.setAttribute('checked', 'checked');
+    checkbox.value = '1';
+    checkbox.dispatchEvent(new Event('change', { bubbles: true }));
+    checkbox.dispatchEvent(new Event('input', { bubbles: true }));
+    checkbox.dispatchEvent(new Event('click', { bubbles: true }));
+    await sleep(500);
+    log('Checkbox set manually, checked:', checkbox.checked);
+    return checkbox.checked;
+  }
+
   // ============ PARSERS ============
 
   function parseAttributes(attrString: string): Record<string, string> {
@@ -159,6 +183,72 @@
       if (match) result[fieldName] = match[1].replace('+', '');
     }
     return result;
+  }
+
+  function parseSpellcasting(
+    abilities: Array<{ name: string; description: string }>,
+  ): {
+    hasSpellcasting: boolean;
+    ability: string;
+    spellDC: string;
+    spellAttack: string;
+    casterLevel: string;
+  } | null {
+    if (!abilities || abilities.length === 0) return null;
+
+    for (const ability of abilities) {
+      const desc = ability.description.toLowerCase();
+
+      if (
+        desc.includes('spellcasting ability') ||
+        desc.includes('innately cast')
+      ) {
+        const result = {
+          hasSpellcasting: true,
+          ability: '0*',
+          spellDC: '',
+          spellAttack: '',
+          casterLevel: '',
+        };
+
+        // Extract spellcasting ability
+        const abilityMatch = ability.description.match(
+          /spellcasting ability is (\w+)/i,
+        );
+        if (abilityMatch) {
+          const abilityName = abilityMatch[1].toLowerCase();
+          const abilityMap: Record<string, string> = {
+            strength: '@{strength_mod}+',
+            dexterity: '@{dexterity_mod}+',
+            constitution: '@{constitution_mod}+',
+            intelligence: '@{intelligence_mod}+',
+            wisdom: '@{wisdom_mod}+',
+            charisma: '@{charisma_mod}+',
+          };
+          result.ability = abilityMap[abilityName] || '0*';
+        }
+
+        // Extract spell save DC
+        const dcMatch = ability.description.match(/spell save DC (\d+)/i);
+        if (dcMatch) result.spellDC = dcMatch[1];
+
+        // Extract spell attack bonus
+        const attackMatch = ability.description.match(
+          /([+\-]\d+) to hit with spell attacks/i,
+        );
+        if (attackMatch) result.spellAttack = attackMatch[1].replace('+', '');
+
+        // Extract caster level (e.g. "5th-level spellcaster" or "5th level spellcaster")
+        const levelMatch = ability.description.match(
+          /(\d+)\w*[\s-]+level spellcaster/i,
+        );
+        if (levelMatch) result.casterLevel = levelMatch[1];
+
+        return result;
+      }
+    }
+
+    return null;
   }
 
   function parseSkills(skillString: string): Record<string, string> {
@@ -206,41 +296,69 @@
       damageType2: '',
     };
 
-    const attackMatch = description.match(
-      /(Melee|Ranged)\s+(Weapon|Spell)\s+Attack:\s*([+-]?\d+)\s*to hit/i,
+    const toHitMatch = description.match(/([+\-]\d+)\s+to\s+hit/i);
+    if (!toHitMatch) return result;
+
+    // If the description is primarily a saving throw ability, don't parse as attack
+    // Only skip if the DC save appears BEFORE "Hit:" or there's no "Hit:" at all
+    // (attacks that deal damage on hit and THEN require a save are still attacks)
+    const dcMatch = description.match(
+      /must\s+(make|succeed\s+on)\s+a\s+DC\s+\d+/i,
     );
-    if (!attackMatch) return result;
+    const hitIndex = description.search(/\b(Hit:|On a hit|dealing\s+\d+)/i);
+    if (dcMatch) {
+      const dcIndex = description.search(
+        /must\s+(make|succeed\s+on)\s+a\s+DC\s+\d+/i,
+      );
+      if (hitIndex === -1 || dcIndex < hitIndex) {
+        log(
+          'Skipping attack parse: save-based ability (DC before Hit or no Hit)',
+        );
+        return result;
+      }
+    }
 
     result.isAttack = true;
-    result.attackType = attackMatch[1].toLowerCase().startsWith('r')
-      ? 'Ranged'
-      : 'Melee';
-    result.toHit = attackMatch[3].replace('+', '');
+    result.toHit = toHitMatch[1].replace('+', '');
+
+    const typeMatch = description.match(
+      /\b(melee|ranged)\s+(weapon\s+|spell\s+)?attack/i,
+    );
+    if (typeMatch) {
+      result.attackType = (typeMatch[1].charAt(0).toUpperCase() +
+        typeMatch[1].slice(1).toLowerCase()) as 'Melee' | 'Ranged';
+    } else if (description.match(/\branged\b/i)) {
+      result.attackType = 'Ranged';
+    } else {
+      result.attackType = 'Melee';
+    }
 
     const reachMatch = description.match(
       /(?:reach|range)\s+([\d\/]+\s*ft\.?)/i,
     );
     if (reachMatch) result.reach = reachMatch[1];
 
+    // Target: capture text after "reach/range X ft.," up to a sentence-ending period
+    // Use a greedy match that skips periods followed by lowercase or digits (like "15 ft. cone")
     const targetMatch = description.match(
-      /(?:reach|range)\s+[\d\/]+\s*ft\.?,\s*(.+?)\./i,
+      /(?:reach|range)\s+[\d\/]+\s*ft\.?,\s*(.+?)\.(?:\s+(?:Hit|The|On|If|Each|$)|\s*$)/i,
     );
     if (targetMatch) result.target = targetMatch[1].trim();
 
     const damageMatch = description.match(
-      /Hit:\s*\d+\s*\((\d+d\d+(?:\s*[+-]\s*\d+)?)\)\s*(\w+)\s*damage/i,
+      /(?:hit:|dealing)\s*\d+\s*\(([^)]+)\)\s+(\w+)\s+damage/i,
     );
     if (damageMatch) {
-      result.damage = damageMatch[1].replace(/\s/g, '');
-      result.damageType = damageMatch[2];
+      result.damage = damageMatch[1].trim().replace(/\s/g, '');
+      result.damageType = damageMatch[2].trim();
     }
 
     const damage2Match = description.match(
-      /plus\s+\d+\s*\((\d+d\d+(?:\s*[+-]\s*\d+)?)\)\s*(\w+)\s*damage/i,
+      /plus\s+\d+\s*\(([^)]+)\)\s+(\w+)\s+damage/i,
     );
     if (damage2Match) {
-      result.damage2 = damage2Match[1].replace(/\s/g, '');
-      result.damageType2 = damage2Match[2];
+      result.damage2 = damage2Match[1].trim().replace(/\s/g, '');
+      result.damageType2 = damage2Match[2].trim();
     }
 
     return result;
@@ -263,10 +381,8 @@
     existingIds: Set<string>,
     label: string,
   ): Promise<Element | null> {
-    // Click Add
     addButton.click();
 
-    // Poll for new row
     for (let attempt = 0; attempt < 30; attempt++) {
       await sleep(100);
       const rows = container.querySelectorAll('.repitem');
@@ -274,7 +390,7 @@
         const id = row.getAttribute('data-reprowid');
         if (id && !existingIds.has(id)) {
           log(`[${label}] New row after ${(attempt + 1) * 100}ms`);
-          await sleep(500); // Let framework settle
+          await sleep(500);
           return row;
         }
       }
@@ -310,7 +426,6 @@
     editButton.click();
     await sleep(500);
 
-    // Check if form is still visible (attack checkbox may have toggled it)
     const npcOptions = row.querySelector('.npc_options') as HTMLElement;
     if (npcOptions && npcOptions.offsetHeight > 0) {
       log('Form still open, clicking gear again');
@@ -383,7 +498,6 @@
         if (attack.isAttack) {
           log(`[${label}] Attack: ${attack.attackType}, +${attack.toHit}`);
 
-          // Check the attack checkbox
           const checkbox = newRow.querySelector<HTMLInputElement>(
             '.npc_options input[type="checkbox"][name="attr_attack_flag"]',
           );
@@ -392,7 +506,6 @@
             await sleep(300);
           }
 
-          // Set attack type
           const typeSelect = newRow.querySelector<HTMLSelectElement>(
             '.npc_options select[name="attr_attack_type"]',
           );
@@ -402,7 +515,6 @@
             await sleep(200);
           }
 
-          // Attack fields
           await fillRowField(
             newRow,
             '.npc_options input[name="attr_attack_range"]',
@@ -422,7 +534,6 @@
             container,
           );
 
-          // Primary damage
           await fillRowField(
             newRow,
             '.attack_option:not(.actiondamage) input[name="attr_attack_damage"]',
@@ -436,7 +547,6 @@
             container,
           );
 
-          // Secondary damage
           await fillRowField(
             newRow,
             '.npc_options input[name="attr_attack_damage2"]',
@@ -467,14 +577,35 @@
     log('Starting fill for:', monster.name);
 
     if (!(await waitForCharsheet())) {
-      throw new Error('#charsheet not found');
+      throw new Error(
+        'Character sheet not found. ' +
+          'Please open a character sheet at https://app.roll20.net/characters first.',
+      );
     }
 
-    // Check if a creature is already filled in
+    // Check if the "Create an NPC" modal is still showing
+    const npcCheckbox = document.querySelector<HTMLInputElement>(
+      'input[name="attr_mancer_npc"]',
+    );
+    if (npcCheckbox && npcCheckbox.offsetParent !== null) {
+      throw new Error(
+        'Please click "Create an NPC" on the character sheet first, then try again.',
+      );
+    }
+
+    // Verify NPC name field exists
     const nameField = document.querySelector<HTMLInputElement>(
       'input[name="attr_npc_name"]',
     );
-    if (nameField && nameField.value.trim() !== '') {
+    if (!nameField) {
+      throw new Error(
+        'Could not find the NPC name field. ' +
+          'Make sure this is an NPC character sheet using the D&D 5e by Roll20 template.',
+      );
+    }
+
+    // Check if a creature is already filled in
+    if (nameField.value.trim() !== '') {
       const existingName = nameField.value.trim();
       log(`Sheet already has a creature: "${existingName}"`);
       throw new Error(
@@ -564,6 +695,65 @@
       'attr_npc_condition_immunities',
       monster.condition_immunities || '',
     );
+
+    // Spellcasting
+    const spellcasting = parseSpellcasting(monster.abilities || []);
+    if (spellcasting?.hasSpellcasting) {
+      log('Detected spellcaster, filling spellcasting fields');
+
+      const spellCheckbox = document.querySelector<HTMLInputElement>(
+        'input[name="attr_npcspellcastingflag"]',
+      );
+
+      if (spellCheckbox) {
+        log('Found spellcasting checkbox, checked:', spellCheckbox.checked);
+        const checked = await checkCheckbox(spellCheckbox);
+
+        if (checked) {
+          // Wait for the spell option fields to become visible
+          await sleep(1000);
+
+          // Set spellcasting ability
+          const abilitySelect = document.querySelector<HTMLSelectElement>(
+            'select[name="attr_spellcasting_ability"]',
+          );
+          if (abilitySelect && spellcasting.ability) {
+            log('Setting spellcasting ability to:', spellcasting.ability);
+            abilitySelect.value = spellcasting.ability;
+            abilitySelect.dispatchEvent(new Event('change', { bubbles: true }));
+            abilitySelect.blur();
+            await sleep(500);
+          }
+
+          // Set global magic attack modifier
+          if (spellcasting.spellAttack) {
+            await fillFieldByName(
+              'attr_globalmagicmod',
+              spellcasting.spellAttack,
+            );
+          }
+
+          // Set caster level
+          if (spellcasting.casterLevel) {
+            await fillFieldByName(
+              'attr_caster_level',
+              spellcasting.casterLevel,
+            );
+          }
+
+          // Set spell DC mod
+          if (spellcasting.spellDC) {
+            await fillFieldByName('attr_spell_dc_mod', spellcasting.spellDC);
+          }
+
+          log('Spellcasting fields filled');
+        } else {
+          log('❌ Could not check spellcasting checkbox after all attempts');
+        }
+      } else {
+        log('❌ Could not find spellcasting checkbox');
+      }
+    }
 
     // Traits (abilities)
     await fillRepeatingSection(
