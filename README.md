@@ -16,13 +16,21 @@ A Chrome extension that syncs D&D monster statblocks from cros.land and auto-fil
 - Auto-fills Roll20 character sheets in the character-sheet iframe
 - Fills basic stats (name, type, AC, HP, speed, senses, etc.)
 - Fills ability scores, saving throws, and skills
+- Spellcaster support (detects and fills spellcasting ability, DC, attack bonus, caster level)
 - Handles repeating sections (traits, actions, legendary actions)
-- Intelligent attack parsing (extracts to-hit, damage, range, etc.)
+- Intelligent attack parsing (extracts to-hit, damage, range, type from descriptions)
+- Skips save-based abilities that aren't attacks (avoids false positives)
 - Uses `execCommand` for trusted input events that Roll20's framework accepts
+- Helpful error messages guide users to create NPC sheets and handle edge cases
 
 ## Current Status
 
-The extension works end-to-end but has form persistence challenges with Roll20's React-based character sheet. We're refining the form-filling approach to ensure Roll20 properly saves the data.
+The extension is **complete and ready for use**! Both phases work end-to-end:
+- ✅ Syncs monsters from cros.land automatically
+- ✅ Displays monsters in organized popup with accordion UI
+- ✅ Fills Roll20 character sheets including spellcasters and complex attacks
+- ✅ Spellcasting metadata (ability, DC, attack bonus) fills automatically
+- ✅ The full spellcasting trait (with spell list) is added to traits section
 
 ## Development
 
@@ -160,7 +168,7 @@ statblock-chrome-extension/
 
 ## Known Issues
 
-- **Form persistence**: Roll20's React-based character sheet sometimes doesn't persist programmatically-filled values. We're using `execCommand('insertText')` and proper event sequences to work around this.
+- **Form persistence**: Roll20's character sheet uses complex form handling that sometimes doesn't persist programmatically-filled values. We're using `execCommand('insertText')` and proper event sequences to work around this.
 - **Timing sensitivity**: Some fields require specific delays to register properly
 - **Icons**: Currently using placeholder SVG icons
 

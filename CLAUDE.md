@@ -121,9 +121,9 @@ Roll20 character sheet page
 - Must target ONLY the `character-sheet` frame to avoid conflicts
 - Required `all_frames: true` in manifest.json and `storage.googleapis.com` in host_permissions
 
-**Form Persistence with React:**
-- Roll20 uses a React-based character sheet that doesn't always persist programmatically-filled values
-- Solution: `document.execCommand('insertText')` creates trusted input events that React accepts
+**Form Persistence:**
+- Roll20's character sheet uses complex form handling that doesn't always persist programmatically-filled values
+- Solution: `document.execCommand('insertText')` creates trusted input events that the framework accepts
 - Requires proper event sequence: focus → select → execCommand → blur
 - Sequential filling with delays (30ms after input, 20ms after blur) for reliability
 - All `fillField()` calls must be awaited (no parallel filling)
@@ -183,7 +183,7 @@ async function fillTextField(selector: string, value: string): Promise<boolean> 
 
   field.focus();
   field.select();
-  document.execCommand('insertText', false, value); // React-compatible
+  document.execCommand('insertText', false, value); // Trusted input event
   await sleep(30);
   field.blur();
   await sleep(20);
@@ -213,7 +213,7 @@ For traits, actions, and legendary actions:
 
 **Form Persistence:**
 - Some fields visually fill but don't always persist when the form is saved
-- This is due to Roll20's React implementation not always recognizing programmatic changes
+- This is due to Roll20's complex form handling not always recognizing programmatic changes
 - The `execCommand('insertText')` approach significantly improved reliability
 - Still refining timing and event sequences for 100% persistence
 

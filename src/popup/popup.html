@@ -3,43 +3,411 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>StatBlock Sync Status</title>
-  <link rel="stylesheet" href="popup.css">
+  <title>StatBlock Auto-Fill</title>
+  <style>
+    :root {
+      --bg: #ffffff;
+      --surface: #f4f4f4;
+      --surface-hover: #f0f0f0;
+      --surface-active: #e8e8e8;
+      --border: #e0e0e0;
+      --text: #1a1a1f;
+      --text-muted: #6b6b76;
+      --text-dim: #9b9ba5;
+      --btn-bg: #1f513f;
+      --btn-text: #f9f8f6;
+      --accent: #1f513f;
+      --accent-bg: #eef5f2;
+      --accent-border: #c8ddd5;
+      --cyan: #1f513f;
+      --green-dot: #3cbf3c;
+      --yellow-dot: #e0a820;
+    }
+
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+
+    body {
+      width: 380px;
+      min-height: 200px;
+      max-height: 580px;
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'Inter', 'Helvetica Neue', Helvetica, Arial, sans-serif;
+      font-size: 14px;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden;
+    }
+
+    /* ---- Header ---- */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      padding: 14px 16px;
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .header img {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+    }
+
+    .header-text {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+
+    .header-title {
+      font-size: 17px;
+      font-weight: 700;
+      color: var(--text);
+      letter-spacing: -0.3px;
+    }
+
+    .header-subtitle {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+
+    .header-subtitle a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .header-subtitle a:hover {
+      text-decoration: underline;
+    }
+
+    /* ---- Status Bar ---- */
+    .status-bar {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 16px;
+      background: var(--surface);
+      border-bottom: 1px solid var(--border);
+      flex-shrink: 0;
+    }
+
+    .status-dot {
+      width: 9px;
+      height: 9px;
+      border-radius: 50%;
+      flex-shrink: 0;
+    }
+
+    .status-dot.green { background: var(--green-dot); box-shadow: 0 0 5px rgba(60, 191, 60, 0.4); }
+    .status-dot.yellow { background: var(--yellow-dot); box-shadow: 0 0 5px rgba(224, 168, 32, 0.3); }
+    .status-dot.off { background: var(--text-dim); }
+
+    .status-text {
+      flex: 1;
+      font-size: 13px;
+      color: var(--text-muted);
+    }
+
+    .status-text strong {
+      color: var(--text);
+      font-weight: 600;
+    }
+
+    .status-text a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .status-text a:hover {
+      text-decoration: underline;
+    }
+
+    /* ---- Monster List ---- */
+    .monster-list {
+      flex: 1;
+      overflow-y: auto;
+      scrollbar-width: thin;
+      scrollbar-color: var(--border) transparent;
+    }
+
+    .monster-list::-webkit-scrollbar {
+      width: 6px;
+    }
+
+    .monster-list::-webkit-scrollbar-thumb {
+      background: var(--border);
+      border-radius: 3px;
+    }
+
+    .category-group {
+      border-bottom: 1px solid var(--border);
+    }
+
+    .category-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px;
+      cursor: pointer;
+      user-select: none;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      color: var(--text-muted);
+      background: var(--surface);
+      transition: background 0.15s;
+    }
+
+    .category-header:hover {
+      background: var(--surface-hover);
+    }
+
+    .category-header .count {
+      font-weight: 400;
+      color: var(--text-dim);
+    }
+
+    .category-header .arrow {
+      font-size: 10px;
+      transition: transform 0.2s;
+    }
+
+    .category-header.collapsed .arrow {
+      transform: rotate(-90deg);
+    }
+
+    .category-monsters {
+      overflow: hidden;
+      transition: max-height 0.25s ease;
+    }
+
+    .category-monsters.collapsed {
+      max-height: 0 !important;
+    }
+
+    .monster-item {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 16px 10px 26px;
+      cursor: pointer;
+      transition: background 0.1s;
+      border-left: 3px solid transparent;
+    }
+
+    .monster-item:hover {
+      background: var(--surface);
+    }
+
+    .monster-item.selected {
+      background: var(--accent-bg);
+      border-left-color: var(--accent);
+    }
+
+    .monster-name {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text);
+    }
+
+    .monster-meta {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 12px;
+      color: var(--text-dim);
+      flex-shrink: 0;
+    }
+
+    .monster-cr {
+      background: var(--accent-bg);
+      padding: 2px 7px;
+      border-radius: 4px;
+      font-weight: 700;
+      font-size: 11px;
+      color: var(--accent);
+      border: 1px solid var(--accent-border);
+    }
+
+    /* ---- Empty State ---- */
+    .empty-state {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 44px 24px;
+      text-align: center;
+      gap: 10px;
+    }
+
+    .empty-state .icon {
+      font-size: 32px;
+      opacity: 0.5;
+    }
+
+    .empty-state p {
+      color: var(--text-muted);
+      font-size: 13px;
+      line-height: 1.5;
+    }
+
+    .empty-state a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 600;
+    }
+
+    .empty-state a:hover {
+      text-decoration: underline;
+    }
+
+    /* ---- Footer / Export ---- */
+    .footer {
+      flex-shrink: 0;
+      padding: 12px 16px;
+      border-top: 1px solid var(--border);
+      background: var(--bg);
+    }
+
+    .export-btn {
+      width: 100%;
+      padding: 11px 18px;
+      border: none;
+      border-radius: 8px;
+      font-size: 14px;
+      font-weight: 600;
+      cursor: pointer;
+      transition: all 0.15s;
+      letter-spacing: -0.2px;
+    }
+
+    .export-btn:enabled {
+      background-color: var(--btn-bg);
+      box-shadow: inset 0 0 0 .1rem var(--btn-bg);
+      color: var(--btn-text);
+    }
+
+    .export-btn:enabled:hover {
+      background-color: #17402f;
+      box-shadow: inset 0 0 0 .1rem #17402f;
+      transform: translateY(-1px);
+    }
+
+    .export-btn:enabled:active {
+      transform: translateY(0);
+    }
+
+    .export-btn:disabled {
+      background: var(--surface);
+      color: var(--text-dim);
+      cursor: default;
+      border: 1px solid var(--border);
+    }
+
+    .selected-info {
+      font-size: 12px;
+      color: var(--text-dim);
+      text-align: center;
+      margin-top: 7px;
+    }
+
+    .selected-info a {
+      color: var(--accent);
+      text-decoration: none;
+      font-weight: 500;
+    }
+
+    .selected-info a:hover {
+      text-decoration: underline;
+    }
+
+    /* ---- Filling State ---- */
+    body.filling .monster-list {
+      pointer-events: none;
+      opacity: 0.4;
+      transition: opacity 0.2s;
+    }
+
+    body.filling .category-header {
+      pointer-events: none;
+    }
+
+    .filling-overlay {
+      display: none;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 32px 24px;
+      text-align: center;
+      gap: 12px;
+    }
+
+    body.filling .filling-overlay {
+      display: flex;
+    }
+
+    body.filling .monster-list {
+      display: none;
+    }
+
+    .spinner {
+      width: 28px;
+      height: 28px;
+      border: 3px solid var(--border);
+      border-top-color: var(--accent);
+      border-radius: 50%;
+      animation: spin 0.8s linear infinite;
+    }
+
+    @keyframes spin {
+      to { transform: rotate(360deg); }
+    }
+
+    .filling-text {
+      font-size: 13px;
+      color: var(--text-muted);
+      line-height: 1.4;
+    }
+
+    .filling-text strong {
+      color: var(--text);
+    }
+  </style>
 </head>
 <body>
-  <div class="container">
-    <header>
-      <h1>StatBlock Auto-Fill</h1>
-    </header>
 
-    <div id="status" class="status">
-      <div class="status-icon">⏳</div>
-      <div class="status-text">Loading...</div>
+  <div class="header">
+    <img src="icon-48.png" alt="StatBlock">
+    <div class="header-text">
+      <div class="header-title">Conjure Creature</div>
+      <div class="header-subtitle">Create new Roll20 monsters in just a few clicks</div>
     </div>
+  </div>
 
-    <div id="sync-info" class="sync-info" style="display: none;">
-      <div class="info-row">
-        <span class="label">Last Sync:</span>
-        <span id="last-sync" class="value">-</span>
-      </div>
-      <div class="info-row">
-        <span class="label">Total Monsters:</span>
-        <span id="total-monsters" class="value">0</span>
-      </div>
-    </div>
+  <div class="status-bar" id="status-bar">
+    <div class="status-dot off" id="status-dot"></div>
+    <div class="status-text" id="status-text">Checking...</div>
+  </div>
 
-    <div id="monster-list" class="monster-list" style="display: none;"></div>
+  <div class="monster-list" id="monster-list"></div>
 
-    <div id="actions" class="actions" style="display: none;">
-      <button id="fill-roll20" class="fill-button" disabled>Select a monster to export</button>
-      <p class="selected-info" id="selected-info">Select a monster above</p>
-    </div>
+  <div class="filling-overlay" id="filling-overlay">
+    <div class="spinner"></div>
+    <div class="filling-text" id="filling-text">Exporting to Roll20...</div>
+  </div>
 
-    <footer>
-      <p class="instructions">
-        Visit <a href="https://cros.land/ai-powered-dnd-5e-monster-statblock-generator/" target="_blank">cros.land</a> to generate monsters.
-      </p>
-    </footer>
+  <div class="footer" id="footer" style="display:none">
+    <button class="export-btn" id="fill-roll20" disabled>Select a monster</button>
+    <div class="selected-info" id="selected-info"></div>
   </div>
 
   <script src="popup.js"></script>

@@ -8,7 +8,7 @@ function formatRelativeTime(timestamp: number): string {
   const hours = Math.floor(minutes / 60);
   const days = Math.floor(hours / 24);
 
-  if (seconds < 60) return 'Just now';
+  if (seconds < 60) return 'just now';
   if (minutes < 60) return `${minutes}m ago`;
   if (hours < 24) return `${hours}h ago`;
   return `${days}d ago`;
@@ -25,7 +25,36 @@ function countMonsters(collection: MonsterCollection): number {
   return total;
 }
 
+function isSyncFresh(timestamp: number): boolean {
+  const ONE_HOUR = 60 * 60 * 1000;
+  return Date.now() - timestamp < ONE_HOUR;
+}
+
+function setFillingState(active: boolean, monsterName?: string): void {
+  const body = document.body;
+  const fillingText = document.getElementById('filling-text')!;
+  const fillButton = document.getElementById(
+    'fill-roll20',
+  ) as HTMLButtonElement;
+  const selectedInfo = document.getElementById('selected-info')!;
+
+  if (active) {
+    body.classList.add('filling');
+    fillingText.innerHTML = `<strong>${monsterName}</strong><br>Exporting to Roll20, this may take a moment...`;
+    fillButton.disabled = true;
+    fillButton.textContent = 'Exporting...';
+    selectedInfo.textContent = '';
+  } else {
+    body.classList.remove('filling');
+  }
+}
+
 async function updateStatus(): Promise<void> {
+  const statusDot = document.getElementById('status-dot')!;
+  const statusText = document.getElementById('status-text')!;
+  const monsterListDiv = document.getElementById('monster-list')!;
+  const footer = document.getElementById('footer')!;
+
   try {
     const data = await chrome.storage.local.get([
       STORAGE_KEYS.MONSTERS,
@@ -35,39 +64,39 @@ async function updateStatus(): Promise<void> {
     const monsters: MonsterCollection | undefined = data[STORAGE_KEYS.MONSTERS];
     const lastSync: number | undefined = data[STORAGE_KEYS.LAST_SYNC];
 
-    const statusDiv = document.getElementById('status')!;
-    const syncInfoDiv = document.getElementById('sync-info')!;
-
+    // No data yet
     if (!monsters || !lastSync) {
-      statusDiv.innerHTML = `
-        <div class="status-icon">📭</div>
-        <div class="status-text">No monsters synced yet</div>
+      statusDot.className = 'status-dot off';
+      statusText.innerHTML =
+        'No monsters yet — <a href="https://cros.land/ai-powered-dnd-5e-monster-statblock-generator/" target="_blank">generate some at cros.land</a>';
+      monsterListDiv.innerHTML = `
+        <div class="empty-state">
+          <div class="icon">🎲</div>
+          <p>Generate monsters at <a href="https://cros.land/ai-powered-dnd-5e-monster-statblock-generator/" target="_blank">cros.land</a> and they'll appear here automatically.</p>
+        </div>
       `;
       return;
     }
 
-    statusDiv.className = 'status synced';
-    statusDiv.innerHTML = `
-      <div class="status-icon">✅</div>
-      <div class="status-text">Synced</div>
-    `;
-
     const totalMonsters = countMonsters(monsters);
-    document.getElementById('last-sync')!.textContent =
-      formatRelativeTime(lastSync);
-    document.getElementById('total-monsters')!.textContent =
-      totalMonsters.toString();
-    syncInfoDiv.style.display = 'block';
+    const fresh = isSyncFresh(lastSync);
 
-    const monsterListDiv = document.getElementById('monster-list')!;
+    // Status bar
+    statusDot.className = `status-dot ${fresh ? 'green' : 'yellow'}`;
+    if (fresh) {
+      statusText.innerHTML = `<strong>${totalMonsters} monsters</strong> ready · synced ${formatRelativeTime(lastSync)}`;
+    } else {
+      statusText.innerHTML = `<strong>${totalMonsters} monsters</strong> · synced ${formatRelativeTime(lastSync)} · <a href="https://cros.land" target="_blank">refresh</a>`;
+    }
+
+    // Build monster list
     monsterListDiv.innerHTML = '';
-
     let isFirstCategory = true;
 
     for (const [category, monsterList] of Object.entries(monsters)) {
       if (category === 'generationCount' || category === 'firstGenerationTime')
         continue;
-      if (!Array.isArray(monsterList)) continue;
+      if (!Array.isArray(monsterList) || monsterList.length === 0) continue;
 
       const categoryGroup = document.createElement('div');
       categoryGroup.className = 'category-group';
@@ -77,7 +106,7 @@ async function updateStatus(): Promise<void> {
         ? 'category-header'
         : 'category-header collapsed';
       categoryHeader.innerHTML = `
-        <span>${category} (${monsterList.length})</span>
+        <span>${category} <span class="count">(${monsterList.length})</span></span>
         <span class="arrow">▼</span>
       `;
       categoryGroup.appendChild(categoryHeader);
@@ -93,14 +122,14 @@ async function updateStatus(): Promise<void> {
         monsterItem.dataset.category = category;
         monsterItem.dataset.index = index.toString();
 
-        const cr = monster.challenge_rating?.split(' ')[0] || 'N/A';
-        const type = monster.type_and_alignment?.split(',')[0] || 'Unknown';
+        const cr = monster.challenge_rating?.split(' ')[0] || '?';
+        const type = monster.type_and_alignment?.split(',')[0] || '';
 
         monsterItem.innerHTML = `
           <div class="monster-name">${monster.name}</div>
           <div class="monster-meta">
-            <span>CR ${cr}</span>
             <span>${type}</span>
+            <span class="monster-cr">CR ${cr}</span>
           </div>
         `;
 
@@ -110,6 +139,7 @@ async function updateStatus(): Promise<void> {
         monstersContainer.appendChild(monsterItem);
       });
 
+      // Expand first category
       if (isFirstCategory) {
         requestAnimationFrame(() => {
           monstersContainer.style.maxHeight =
@@ -119,11 +149,12 @@ async function updateStatus(): Promise<void> {
         monstersContainer.style.maxHeight = '0';
       }
 
+      // Accordion toggle
       categoryHeader.addEventListener('click', () => {
-        const isCurrentlyCollapsed =
-          categoryHeader.classList.contains('collapsed');
+        const isCollapsed = categoryHeader.classList.contains('collapsed');
 
-        if (isCurrentlyCollapsed) {
+        if (isCollapsed) {
+          // Collapse others
           document
             .querySelectorAll('.category-header:not(.collapsed)')
             .forEach((otherHeader) => {
@@ -149,19 +180,15 @@ async function updateStatus(): Promise<void> {
 
       categoryGroup.appendChild(monstersContainer);
       monsterListDiv.appendChild(categoryGroup);
-
       isFirstCategory = false;
     }
 
-    monsterListDiv.style.display = 'block';
-    document.getElementById('actions')!.style.display = 'block';
+    // Show footer
+    footer.style.display = 'block';
   } catch (error) {
     console.error('Error updating status:', error);
-    const statusDiv = document.getElementById('status')!;
-    statusDiv.innerHTML = `
-      <div class="status-icon">❌</div>
-      <div class="status-text">Error loading data</div>
-    `;
+    statusDot.className = 'status-dot off';
+    statusText.textContent = 'Error loading data';
   }
 }
 
@@ -184,13 +211,14 @@ function selectMonster(category: string, index: number, monster: any): void {
 
   fillButton.disabled = false;
   fillButton.textContent = `Export ${monster.name} to Roll20`;
-  selectedInfo.textContent = `Ready to fill Roll20 form`;
+  selectedInfo.textContent = '';
 }
 
 async function fillRoll20Form(): Promise<void> {
   const fillButton = document.getElementById(
     'fill-roll20',
   ) as HTMLButtonElement;
+  const selectedInfo = document.getElementById('selected-info')!;
   const originalText = fillButton.textContent;
 
   try {
@@ -209,18 +237,22 @@ async function fillRoll20Form(): Promise<void> {
       return;
     }
 
-    if (!tab.url?.includes('roll20.net')) {
-      alert('Please open a Roll20 character sheet first');
+    if (
+      !tab.url?.includes('roll20.net') ||
+      tab.url?.includes('roll20.net/characters/create')
+    ) {
+      selectedInfo.innerHTML =
+        '<a href="https://app.roll20.net/characters/create/ogl5e" target="_blank">Create a Roll20 character</a>, click <strong>Create an NPC</strong>, then export again';
       return;
     }
 
-    fillButton.disabled = true;
-    fillButton.textContent = 'Filling...';
+    setFillingState(true, data.selectedMonster.name);
 
     chrome.tabs.sendMessage(
       tab.id,
       { action: 'fillRoll20Form', monster: data.selectedMonster },
       (response) => {
+        setFillingState(false);
         fillButton.disabled = false;
         fillButton.textContent = originalText;
 
@@ -229,6 +261,7 @@ async function fillRoll20Form(): Promise<void> {
             'Chrome runtime error:',
             chrome.runtime.lastError.message,
           );
+          selectedInfo.textContent = '';
           alert(
             'Could not connect to Roll20 character sheet.\n\n' +
               '1. Make sure a character sheet popup is open\n' +
@@ -239,16 +272,19 @@ async function fillRoll20Form(): Promise<void> {
         }
 
         if (response?.success) {
-          alert('Form filled successfully!');
+          selectedInfo.textContent = '✓ Export complete';
         } else {
-          alert('Error filling form: ' + (response?.error || 'Unknown error'));
+          selectedInfo.textContent = '';
+          alert('Error: ' + (response?.error || 'Unknown error'));
         }
       },
     );
   } catch (error) {
     console.error('Fill error:', error);
+    setFillingState(false);
     fillButton.disabled = false;
     fillButton.textContent = originalText;
+    selectedInfo.textContent = '';
     alert('Unexpected error: ' + (error as Error).message);
   }
 }

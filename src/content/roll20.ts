@@ -788,6 +788,16 @@
     if (message.action === 'fillRoll20Form') {
       log('Received fillRoll20Form message');
 
+      // Check if we're on the login page
+      const h1 = document.querySelector('h1');
+      if (h1 && h1.textContent?.toLowerCase().includes('login')) {
+        sendResponse({
+          success: false,
+          error: 'Please log in to Roll20 first, then try again.',
+        });
+        return true;
+      }
+
       if (window.name !== 'character-sheet') {
         return false;
       }
