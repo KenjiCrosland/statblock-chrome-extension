@@ -518,7 +518,7 @@
             await fillFieldByName('attr_npc_legendary_actions', '3');
             await fillRepeatingSection('.repcontainer[data-groupname="repeating_npcaction-l"]', monster.legendary_actions, true);
         }
-        log('Form fill complete for:', monster.name);
+        log('✅ Form fill complete for:', monster.name);
     }
     // ============ MESSAGE LISTENER ============
     chrome.runtime.onMessage.addListener((message, _sender, sendResponse) => {

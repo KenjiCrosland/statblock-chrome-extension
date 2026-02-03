@@ -779,7 +779,7 @@
       );
     }
 
-    log('Form fill complete for:', monster.name);
+    log('✅ Form fill complete for:', monster.name);
   }
 
   // ============ MESSAGE LISTENER ============

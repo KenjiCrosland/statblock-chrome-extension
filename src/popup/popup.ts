@@ -237,12 +237,17 @@ async function fillRoll20Form(): Promise<void> {
       return;
     }
 
-    if (
-      !tab.url?.includes('roll20.net') ||
-      tab.url?.includes('roll20.net/characters/create')
-    ) {
+    // Not on Roll20 at all, or on Roll20 but not on a character page
+    if (!tab.url?.includes('roll20.net') || !tab.url.includes('/characters')) {
       selectedInfo.innerHTML =
-        '<a href="https://app.roll20.net/characters/create/ogl5e" target="_blank">Create a Roll20 character</a>, click <strong>Create an NPC</strong>, then export again';
+        '<a href="https://app.roll20.net/characters/create/ogl5e" target="_blank">Create a Roll20 character</a>, click <strong>Create Character</strong>, then <strong>Create an NPC</strong>, then export again';
+      return;
+    }
+
+    // On character creation page but haven't created the character yet
+    if (tab.url.includes('/characters/create')) {
+      selectedInfo.innerHTML =
+        'Click <strong>Create Character</strong>, then <strong>Create an NPC</strong>, then export again';
       return;
     }
 
