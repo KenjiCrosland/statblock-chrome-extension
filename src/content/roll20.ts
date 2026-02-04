@@ -37,7 +37,8 @@
     damageType2: string;
   }
 
-  const DEV_MODE = true;
+  const DEV_MODE = false;
+  let isFilling = false;
 
   function log(...args: any[]) {
     if (DEV_MODE) {
@@ -69,10 +70,18 @@
     field: HTMLInputElement | HTMLTextAreaElement,
     value: string,
   ): Promise<void> {
+    if (!value) return;
     field.click();
     field.focus();
     field.select();
     document.execCommand('insertText', false, value);
+
+    // Verify the insert worked, fall back to direct value set
+    if (field.value !== value) {
+      log(`⚠️ execCommand may have failed for ${field.name}, using fallback`);
+      field.value = value;
+    }
+
     field.dispatchEvent(new Event('input', { bubbles: true }));
     field.dispatchEvent(new Event('change', { bubbles: true }));
     field.blur();
@@ -84,6 +93,7 @@
     name: string,
     value: string,
   ): Promise<boolean> {
+    if (!value || value.toLowerCase() === 'none') return false;
     const field = document.querySelector<
       HTMLInputElement | HTMLTextAreaElement
     >(`input[name="${name}"], textarea[name="${name}"]`);
@@ -99,10 +109,22 @@
     value: string,
     container: Element,
   ): Promise<void> {
-    const field = row.querySelector<HTMLInputElement | HTMLTextAreaElement>(
-      selector,
-    );
-    if (!field || !value) return;
+    if (!value) return;
+
+    // Retry finding the field - it may not be rendered yet
+    let field: HTMLInputElement | HTMLTextAreaElement | null = null;
+    for (let i = 0; i < 10; i++) {
+      field = row.querySelector<HTMLInputElement | HTMLTextAreaElement>(
+        selector,
+      );
+      if (field) break;
+      await sleep(200);
+    }
+
+    if (!field) {
+      log(`⚠️ Field not found after retries: ${selector}`);
+      return;
+    }
 
     field.click();
     field.focus();
@@ -346,7 +368,7 @@
     if (targetMatch) result.target = targetMatch[1].trim();
 
     const damageMatch = description.match(
-      /(?:hit:|dealing)\s*\d+\s*\(([^)]+)\)\s+(\w+)\s+damage/i,
+      /(?:hit:|dealing|deals)\s*\d+\s*\(([^)]+)\)\s+(\w+)\s+damage/i,
     );
     if (damageMatch) {
       result.damage = damageMatch[1].trim().replace(/\s/g, '');
@@ -502,8 +524,7 @@
             '.npc_options input[type="checkbox"][name="attr_attack_flag"]',
           );
           if (checkbox) {
-            checkbox.click();
-            await sleep(300);
+            await checkCheckbox(checkbox);
           }
 
           const typeSelect = newRow.querySelector<HTMLSelectElement>(
@@ -512,7 +533,7 @@
           if (typeSelect) {
             typeSelect.value = attack.attackType;
             typeSelect.dispatchEvent(new Event('change', { bubbles: true }));
-            await sleep(200);
+            await sleep(500);
           }
 
           await fillRowField(
@@ -574,212 +595,231 @@
   // ============ MAIN FILL FUNCTION ============
 
   async function fillMonster(monster: Monster): Promise<void> {
-    log('Starting fill for:', monster.name);
-
-    if (!(await waitForCharsheet())) {
+    if (isFilling) {
       throw new Error(
-        'Character sheet not found. ' +
-          'Please open a character sheet at https://app.roll20.net/characters first.',
+        'Already filling a character sheet. Please wait for the current export to finish.',
       );
     }
+    isFilling = true;
 
-    // Check if the "Create an NPC" modal is still showing
-    const npcCheckbox = document.querySelector<HTMLInputElement>(
-      'input[name="attr_mancer_npc"]',
-    );
-    if (npcCheckbox && npcCheckbox.offsetParent !== null) {
-      throw new Error(
-        'Please click "Create an NPC" on the character sheet first, then try again.',
-      );
-    }
+    try {
+      log('Starting fill for:', monster.name);
 
-    // Verify NPC name field exists
-    const nameField = document.querySelector<HTMLInputElement>(
-      'input[name="attr_npc_name"]',
-    );
-    if (!nameField) {
-      throw new Error(
-        'Could not find the NPC name field. ' +
-          'Make sure this is an NPC character sheet using the D&D 5e by Roll20 template.',
-      );
-    }
-
-    // Check if a creature is already filled in
-    if (nameField.value.trim() !== '') {
-      const existingName = nameField.value.trim();
-      log(`Sheet already has a creature: "${existingName}"`);
-      throw new Error(
-        `This sheet already has "${existingName}" filled in. ` +
-          `Roll20 doesn't support overwriting existing data cleanly. ` +
-          `Please create a new character at https://app.roll20.net/characters or delete this one first.`,
-      );
-    }
-
-    // Basic info
-    await fillFieldByName('attr_npc_name', monster.name);
-    await fillFieldByName('attr_npc_type', monster.type_and_alignment || '');
-
-    // AC
-    const acMatch = monster.armor_class?.match(/^(\d+)/);
-    const acTypeMatch = monster.armor_class?.match(/\(([^)]+)\)/);
-    if (acMatch) await fillFieldByName('attr_npc_ac', acMatch[1]);
-    if (acTypeMatch) await fillFieldByName('attr_npc_actype', acTypeMatch[1]);
-
-    // HP
-    const hpMatch = monster.hit_points?.match(/^(\d+)/);
-    const hpFormulaMatch = monster.hit_points?.match(/\(([^)]+)\)/);
-    if (hpMatch) {
-      const hpField = document.querySelector<HTMLInputElement>(
-        'input[name="attr_hp_max"][type="text"]',
-      );
-      if (hpField) await fillTextField(hpField, hpMatch[1]);
-    }
-    if (hpFormulaMatch)
-      await fillFieldByName('attr_npc_hpformula', hpFormulaMatch[1]);
-
-    // Speed
-    await fillFieldByName('attr_npc_speed', monster.speed || '');
-
-    // Ability scores
-    const attrs = parseAttributes(monster.attributes || '');
-    await fillFieldByName('attr_strength_base', attrs.str);
-    await fillFieldByName('attr_dexterity_base', attrs.dex);
-    await fillFieldByName('attr_constitution_base', attrs.con);
-    await fillFieldByName('attr_intelligence_base', attrs.int);
-    await fillFieldByName('attr_wisdom_base', attrs.wis);
-    await fillFieldByName('attr_charisma_base', attrs.cha);
-
-    // Saving throws
-    if (monster.saving_throws && monster.saving_throws !== 'none') {
-      const saves = parseSavingThrows(monster.saving_throws);
-      for (const [field, value] of Object.entries(saves)) {
-        await fillFieldByName(`attr_${field}`, value);
+      if (!(await waitForCharsheet())) {
+        throw new Error(
+          'Character sheet not found. ' +
+            'Please open a character sheet at https://app.roll20.net/characters first.',
+        );
       }
-    }
 
-    // Skills
-    if (monster.skills && monster.skills !== 'none') {
-      const skills = parseSkills(monster.skills);
-      for (const [field, value] of Object.entries(skills)) {
-        await fillFieldByName(`attr_${field}`, value);
-      }
-    }
-
-    // Senses, Languages
-    await fillFieldByName('attr_npc_senses', monster.senses || '');
-    await fillFieldByName('attr_npc_languages', monster.languages || '');
-
-    // Challenge Rating
-    const crMatch = monster.challenge_rating?.match(/^([\d\/]+)/);
-    if (crMatch) await fillFieldByName('attr_npc_challenge', crMatch[1]);
-
-    // XP
-    const xpMatch = monster.challenge_rating?.match(/\(([\d,]+)\s*XP\)/i);
-    if (xpMatch)
-      await fillFieldByName('attr_npc_xp', xpMatch[1].replace(/,/g, ''));
-
-    // Proficiency Bonus
-    const pb = (monster.proficiency_bonus || '').replace(/[+\s]/g, '');
-    await fillFieldByName('attr_npc_pb', pb);
-
-    // Resistances, Immunities
-    await fillFieldByName(
-      'attr_npc_resistances',
-      monster.damage_resistances || '',
-    );
-    await fillFieldByName(
-      'attr_npc_immunities',
-      monster.damage_immunities || '',
-    );
-    await fillFieldByName(
-      'attr_npc_condition_immunities',
-      monster.condition_immunities || '',
-    );
-
-    // Spellcasting
-    const spellcasting = parseSpellcasting(monster.abilities || []);
-    if (spellcasting?.hasSpellcasting) {
-      log('Detected spellcaster, filling spellcasting fields');
-
-      const spellCheckbox = document.querySelector<HTMLInputElement>(
-        'input[name="attr_npcspellcastingflag"]',
+      // Check if the "Create an NPC" modal is still showing
+      const npcCheckbox = document.querySelector<HTMLInputElement>(
+        'input[name="attr_mancer_npc"]',
       );
+      if (npcCheckbox && npcCheckbox.offsetParent !== null) {
+        throw new Error(
+          'Please click "Create an NPC" on the character sheet first, then try again.',
+        );
+      }
 
-      if (spellCheckbox) {
-        log('Found spellcasting checkbox, checked:', spellCheckbox.checked);
-        const checked = await checkCheckbox(spellCheckbox);
+      // Verify NPC name field exists
+      const nameField = document.querySelector<HTMLInputElement>(
+        'input[name="attr_npc_name"]',
+      );
+      if (!nameField) {
+        throw new Error(
+          'Could not find the NPC name field. ' +
+            'Make sure this is an NPC character sheet using the D&D 5e by Roll20 template.',
+        );
+      }
 
-        if (checked) {
-          // Wait for the spell option fields to become visible
-          await sleep(1000);
+      // Check if a creature is already filled in
+      if (nameField.value.trim() !== '') {
+        const existingName = nameField.value.trim();
+        log(`Sheet already has a creature: "${existingName}"`);
+        throw new Error(
+          `This sheet already has "${existingName}" filled in. ` +
+            `Roll20 doesn't support overwriting existing data cleanly. ` +
+            `Please create a new character at https://app.roll20.net/characters or delete this one first.`,
+        );
+      }
 
-          // Set spellcasting ability
-          const abilitySelect = document.querySelector<HTMLSelectElement>(
-            'select[name="attr_spellcasting_ability"]',
-          );
-          if (abilitySelect && spellcasting.ability) {
-            log('Setting spellcasting ability to:', spellcasting.ability);
-            abilitySelect.value = spellcasting.ability;
-            abilitySelect.dispatchEvent(new Event('change', { bubbles: true }));
-            abilitySelect.blur();
-            await sleep(500);
-          }
+      // Basic info
+      await fillFieldByName('attr_npc_name', monster.name);
+      await fillFieldByName('attr_npc_type', monster.type_and_alignment || '');
 
-          // Set global magic attack modifier
-          if (spellcasting.spellAttack) {
-            await fillFieldByName(
-              'attr_globalmagicmod',
-              spellcasting.spellAttack,
-            );
-          }
+      // AC
+      const acMatch = monster.armor_class?.match(/^(\d+)/);
+      const acTypeMatch = monster.armor_class?.match(/\(([^)]+)\)/);
+      if (acMatch) await fillFieldByName('attr_npc_ac', acMatch[1]);
+      if (acTypeMatch) await fillFieldByName('attr_npc_actype', acTypeMatch[1]);
 
-          // Set caster level
-          if (spellcasting.casterLevel) {
-            await fillFieldByName(
-              'attr_caster_level',
-              spellcasting.casterLevel,
-            );
-          }
+      // HP
+      const hpMatch = monster.hit_points?.match(/^(\d+)/);
+      const hpFormulaMatch = monster.hit_points?.match(/\(([^)]+)\)/);
+      if (hpMatch) {
+        const hpField = document.querySelector<HTMLInputElement>(
+          'input[name="attr_hp_max"][type="text"]',
+        );
+        if (hpField) await fillTextField(hpField, hpMatch[1]);
+      }
+      if (hpFormulaMatch)
+        await fillFieldByName('attr_npc_hpformula', hpFormulaMatch[1]);
 
-          // Set spell DC mod
-          if (spellcasting.spellDC) {
-            await fillFieldByName('attr_spell_dc_mod', spellcasting.spellDC);
-          }
+      // Speed
+      await fillFieldByName('attr_npc_speed', monster.speed || '');
 
-          log('Spellcasting fields filled');
-        } else {
-          log('❌ Could not check spellcasting checkbox after all attempts');
+      // Ability scores
+      const attrs = parseAttributes(monster.attributes || '');
+      await fillFieldByName('attr_strength_base', attrs.str);
+      await fillFieldByName('attr_dexterity_base', attrs.dex);
+      await fillFieldByName('attr_constitution_base', attrs.con);
+      await fillFieldByName('attr_intelligence_base', attrs.int);
+      await fillFieldByName('attr_wisdom_base', attrs.wis);
+      await fillFieldByName('attr_charisma_base', attrs.cha);
+
+      // Saving throws
+      if (monster.saving_throws && monster.saving_throws !== 'none') {
+        const saves = parseSavingThrows(monster.saving_throws);
+        for (const [field, value] of Object.entries(saves)) {
+          await fillFieldByName(`attr_${field}`, value);
         }
-      } else {
-        log('❌ Could not find spellcasting checkbox');
       }
-    }
 
-    // Traits (abilities)
-    await fillRepeatingSection(
-      '.repcontainer[data-groupname="repeating_npctrait"]',
-      monster.abilities || [],
-      false,
-    );
+      // Skills
+      if (monster.skills && monster.skills !== 'none') {
+        const skills = parseSkills(monster.skills);
+        for (const [field, value] of Object.entries(skills)) {
+          await fillFieldByName(`attr_${field}`, value);
+        }
+      }
 
-    // Actions
-    await fillRepeatingSection(
-      '.repcontainer[data-groupname="repeating_npcaction"]',
-      monster.actions || [],
-      true,
-    );
+      // Senses, Languages
+      await fillFieldByName('attr_npc_senses', monster.senses || '');
+      await fillFieldByName('attr_npc_languages', monster.languages || '');
 
-    // Legendary actions
-    if (monster.legendary_actions?.length) {
-      await fillFieldByName('attr_npc_legendary_actions', '3');
+      // Challenge Rating
+      const crMatch = monster.challenge_rating?.match(/^([\d\/]+)/);
+      if (crMatch) await fillFieldByName('attr_npc_challenge', crMatch[1]);
+
+      // XP
+      const xpMatch = monster.challenge_rating?.match(/\(([\d,]+)\s*XP\)/i);
+      if (xpMatch)
+        await fillFieldByName('attr_npc_xp', xpMatch[1].replace(/,/g, ''));
+
+      // Proficiency Bonus
+      const pb = (monster.proficiency_bonus || '').replace(/[+\s]/g, '');
+      await fillFieldByName('attr_npc_pb', pb);
+
+      // Resistances, Immunities
+      await fillFieldByName(
+        'attr_npc_resistances',
+        monster.damage_resistances || '',
+      );
+      await fillFieldByName(
+        'attr_npc_immunities',
+        monster.damage_immunities || '',
+      );
+      await fillFieldByName(
+        'attr_npc_condition_immunities',
+        monster.condition_immunities || '',
+      );
+
+      // Spellcasting
+      const spellcasting = parseSpellcasting(monster.abilities || []);
+      if (spellcasting?.hasSpellcasting) {
+        log('Detected spellcaster, filling spellcasting fields');
+
+        const spellCheckbox = document.querySelector<HTMLInputElement>(
+          'input[name="attr_npcspellcastingflag"]',
+        );
+
+        if (spellCheckbox) {
+          log('Found spellcasting checkbox, checked:', spellCheckbox.checked);
+          const checked = await checkCheckbox(spellCheckbox);
+
+          if (checked) {
+            // Wait for the spell option fields to become visible
+            await sleep(1000);
+
+            // Set spellcasting ability
+            const abilitySelect = document.querySelector<HTMLSelectElement>(
+              'select[name="attr_spellcasting_ability"]',
+            );
+            if (abilitySelect && spellcasting.ability) {
+              log('Setting spellcasting ability to:', spellcasting.ability);
+              abilitySelect.value = spellcasting.ability;
+              abilitySelect.dispatchEvent(
+                new Event('change', { bubbles: true }),
+              );
+              abilitySelect.blur();
+              await sleep(500);
+            }
+
+            // Set global magic attack modifier
+            if (spellcasting.spellAttack) {
+              await fillFieldByName(
+                'attr_globalmagicmod',
+                spellcasting.spellAttack,
+              );
+            }
+
+            // Set caster level
+            if (spellcasting.casterLevel) {
+              await fillFieldByName(
+                'attr_caster_level',
+                spellcasting.casterLevel,
+              );
+            }
+
+            // Set spell DC mod
+            if (spellcasting.spellDC) {
+              await fillFieldByName('attr_spell_dc_mod', spellcasting.spellDC);
+            }
+
+            log('Spellcasting fields filled');
+          } else {
+            log('❌ Could not check spellcasting checkbox after all attempts');
+          }
+        } else {
+          log('❌ Could not find spellcasting checkbox');
+        }
+      }
+
+      // Defocus any active field before starting repeating sections
+      (document.activeElement as HTMLElement)?.blur?.();
+      const charsheet = document.querySelector('#charsheet') as HTMLElement;
+      if (charsheet) charsheet.click();
+      await sleep(500);
+
+      // Traits (abilities)
       await fillRepeatingSection(
-        '.repcontainer[data-groupname="repeating_npcaction-l"]',
-        monster.legendary_actions,
+        '.repcontainer[data-groupname="repeating_npctrait"]',
+        monster.abilities || [],
+        false,
+      );
+
+      // Actions
+      await fillRepeatingSection(
+        '.repcontainer[data-groupname="repeating_npcaction"]',
+        monster.actions || [],
         true,
       );
-    }
 
-    log('✅ Form fill complete for:', monster.name);
+      // Legendary actions
+      if (monster.legendary_actions?.length) {
+        await fillFieldByName('attr_npc_legendary_actions', '3');
+        await fillRepeatingSection(
+          '.repcontainer[data-groupname="repeating_npcaction-l"]',
+          monster.legendary_actions,
+          true,
+        );
+      }
+
+      log('Form fill complete for:', monster.name);
+    } finally {
+      isFilling = false;
+    }
   }
 
   // ============ MESSAGE LISTENER ============

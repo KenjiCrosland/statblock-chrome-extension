@@ -40,7 +40,7 @@ function setFillingState(active: boolean, monsterName?: string): void {
 
   if (active) {
     body.classList.add('filling');
-    fillingText.innerHTML = `<strong>${monsterName}</strong><br>Exporting to Roll20, this may take a moment...`;
+    fillingText.innerHTML = `<strong>${monsterName}</strong><br>Exporting to Roll20, this may take a moment...<br><br><em style="font-size: 12px; opacity: 0.7;">Please stay on this tab until export is complete</em>`;
     fillButton.disabled = true;
     fillButton.textContent = 'Exporting...';
     selectedInfo.textContent = '';
@@ -54,25 +54,59 @@ async function updateStatus(): Promise<void> {
   const statusText = document.getElementById('status-text')!;
   const monsterListDiv = document.getElementById('monster-list')!;
   const footer = document.getElementById('footer')!;
+  const footerLink = document.getElementById('footer-link')!;
+
+  // Update the footer link with the user's preferred cros.land URL
+  try {
+    const data = await chrome.storage.local.get(['croslandUrl']);
+    const croslandUrl =
+      data.croslandUrl ||
+      'https://cros.land/ai-powered-dnd-5e-monster-statblock-generator/';
+    const linkElement = footerLink.querySelector('a');
+    if (linkElement) {
+      linkElement.href = croslandUrl;
+    }
+  } catch (error) {
+    // Use default URL if we can't read storage
+  }
+
+  // Hide the "create more monsters" link if already on cros.land
+  try {
+    const [tab] = await chrome.tabs.query({
+      active: true,
+      currentWindow: true,
+    });
+    if (tab?.url?.includes('cros.land')) {
+      footerLink.classList.add('hidden');
+    } else {
+      footerLink.classList.remove('hidden');
+    }
+  } catch (error) {
+    // If we can't check the tab, just show the link
+    footerLink.classList.remove('hidden');
+  }
 
   try {
     const data = await chrome.storage.local.get([
       STORAGE_KEYS.MONSTERS,
       STORAGE_KEYS.LAST_SYNC,
+      'croslandUrl',
     ]);
 
     const monsters: MonsterCollection | undefined = data[STORAGE_KEYS.MONSTERS];
     const lastSync: number | undefined = data[STORAGE_KEYS.LAST_SYNC];
+    const croslandUrl =
+      data.croslandUrl ||
+      'https://cros.land/ai-powered-dnd-5e-monster-statblock-generator/';
 
     // No data yet
     if (!monsters || !lastSync) {
       statusDot.className = 'status-dot off';
-      statusText.innerHTML =
-        'No monsters yet — <a href="https://cros.land/ai-powered-dnd-5e-monster-statblock-generator/" target="_blank">generate some at cros.land</a>';
+      statusText.innerHTML = `No monsters yet — <a href="${croslandUrl}" target="_blank">generate some at cros.land</a>`;
       monsterListDiv.innerHTML = `
         <div class="empty-state">
           <div class="icon">🎲</div>
-          <p>Generate monsters at <a href="https://cros.land/ai-powered-dnd-5e-monster-statblock-generator/" target="_blank">cros.land</a> and they'll appear here automatically.</p>
+          <p>Generate monsters at <a href="${croslandUrl}" target="_blank">cros.land</a> and they'll appear here automatically.</p>
         </div>
       `;
       return;
@@ -86,7 +120,7 @@ async function updateStatus(): Promise<void> {
     if (fresh) {
       statusText.innerHTML = `<strong>${totalMonsters} monsters</strong> ready · synced ${formatRelativeTime(lastSync)}`;
     } else {
-      statusText.innerHTML = `<strong>${totalMonsters} monsters</strong> · synced ${formatRelativeTime(lastSync)} · <a href="https://cros.land" target="_blank">refresh</a>`;
+      statusText.innerHTML = `<strong>${totalMonsters} monsters</strong> · synced ${formatRelativeTime(lastSync)} · <a href="${croslandUrl}" target="_blank">refresh</a>`;
     }
 
     // Build monster list

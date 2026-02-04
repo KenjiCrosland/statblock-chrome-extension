@@ -13,7 +13,7 @@ const STORAGE_KEY_MONSTERS = 'monsters';
 const STORAGE_KEY_LAST_SYNC = 'lastSync';
 
 // Dev mode - set to false for production
-const DEV_MODE = true;
+const DEV_MODE = false;
 
 // Adaptive polling strategy
 const FAST_POLL_INTERVAL_MS = 5000; // 5 seconds (responsive)
@@ -95,10 +95,17 @@ async function syncMonsters(showNotification = true): Promise<boolean> {
       return false;
     }
 
+    // Detect if user is on premium or free version
+    const isPremium = window.location.href.includes('premium');
+    const croslandUrl = isPremium
+      ? 'https://cros.land/ai-powered-dnd-5e-monster-statblock-generator-premium/'
+      : 'https://cros.land/ai-powered-dnd-5e-monster-statblock-generator/';
+
     // Save to chrome.storage.local (10MB limit vs sync's 8KB limit)
     await chrome.storage.local.set({
       [STORAGE_KEY_MONSTERS]: monsters,
       [STORAGE_KEY_LAST_SYNC]: Date.now(),
+      croslandUrl: croslandUrl,
     });
 
     lastSyncedData = currentData;
@@ -245,7 +252,7 @@ function stopPolling(): void {
  */
 function setupFormDetection(): void {
   // Listen for form submissions (capture phase to catch Vue events)
-  document.addEventListener('submit', (event) => {
+  document.addEventListener('submit', (_event) => {
     log('Form submission detected, starting sync polling');
     startPolling();
   }, true);

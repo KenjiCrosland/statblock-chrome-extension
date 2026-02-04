@@ -60,4 +60,5 @@ export const STORAGE_KEYS = {
   MONSTERS: 'monsters',
   LAST_SYNC: 'lastSync',
   SYNC_ENABLED: 'syncEnabled',
+  CROSLAND_URL: 'croslandUrl',
 } as const;

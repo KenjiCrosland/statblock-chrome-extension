@@ -381,6 +381,36 @@
     .filling-text strong {
       color: var(--text);
     }
+
+    /* ---- Footer Link ---- */
+    .footer-link {
+      margin-top: 10px;
+      text-align: center;
+      font-size: 12px;
+    }
+
+    .footer-link a {
+      color: var(--text-muted);
+      text-decoration: none;
+      transition: color 0.15s;
+    }
+
+    .footer-link a:hover {
+      color: var(--accent);
+      text-decoration: underline;
+    }
+
+    .footer-link.hidden {
+      display: none;
+    }
+
+    /* ---- Version ---- */
+    .version {
+      margin-top: 8px;
+      text-align: center;
+      font-size: 11px;
+      color: var(--text-dim);
+    }
   </style>
 </head>
 <body>
@@ -408,6 +438,10 @@
   <div class="footer" id="footer" style="display:none">
     <button class="export-btn" id="fill-roll20" disabled>Select a monster</button>
     <div class="selected-info" id="selected-info"></div>
+    <div class="footer-link" id="footer-link">
+      <a href="https://cros.land/ai-powered-dnd-5e-monster-statblock-generator/" target="_blank">Create more monsters at cros.land</a>
+    </div>
+    <div class="version">v1.0.0</div>
   </div>
 
   <script src="popup.js"></script>

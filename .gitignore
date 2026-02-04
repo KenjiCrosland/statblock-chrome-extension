@@ -4,6 +4,9 @@ node_modules/
 # Build output
 dist/
 
+# Compiled JS files in src (TypeScript compiled output)
+src/**/*.js
+
 # OS files
 .DS_Store
 Thumbs.db
