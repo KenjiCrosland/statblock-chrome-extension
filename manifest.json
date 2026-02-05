@@ -2,7 +2,7 @@
   "manifest_version": 3,
   "name": "Conjure Creature",
   "version": "1.0.0",
-  "description": "Sync statblocks from cros.land and auto-fill Roll20 monster sheets",
+  "description": "Streamline your homebrew workflow: create D&D monsters at cros.land, export to Roll20 with one click",
   "permissions": [
     "storage",
     "activeTab",
