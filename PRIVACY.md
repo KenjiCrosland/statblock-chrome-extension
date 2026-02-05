@@ -1,10 +1,10 @@
-# Privacy Policy for StatBlock Auto-Fill
+# Privacy Policy for Conjure Creature
 
-**Last Updated:** February 2, 2026
+**Last Updated:** February 3, 2026
 
 ## Overview
 
-StatBlock Auto-Fill is a Chrome extension that syncs D&D monster statblocks from https://cros.land and auto-fills Roll20 character sheets. This extension is committed to protecting your privacy.
+Conjure Creature is a Chrome extension that syncs D&D monster statblocks from https://cros.land and auto-fills Roll20 character sheets. This extension is committed to protecting your privacy.
 
 ## Data Collection
 
@@ -35,7 +35,7 @@ The extension requests the following permissions:
 - **tabs**: To send monster data to Roll20 tabs for form filling
 - **https://cros.land/\***: To read monster data from cros.land's localStorage
 - **https://app.roll20.net/\***: To fill character sheet forms on Roll20
-- **https://storage.googleapis.com/\***: To access Roll20's character sheet iframes (hosted on Google's CDN)
+- **https://storage.googleapis.com/roll20-cdn/\***: To access Roll20's character sheet iframes (hosted on Roll20's CDN)
 
 ## Third-Party Sites
 

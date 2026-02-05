@@ -6,7 +6,8 @@
   "scripts": {
     "dev": "vite build --watch --mode development",
     "build": "vite build",
-    "type-check": "tsc --noEmit"
+    "type-check": "tsc --noEmit",
+    "package": "npm run build && cd dist && zip -r ../conjure-creature-v1.0.0.zip ."
   },
   "devDependencies": {
     "@types/chrome": "^0.0.268",

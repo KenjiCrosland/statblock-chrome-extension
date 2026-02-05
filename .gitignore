@@ -7,6 +7,9 @@ dist/
 # Compiled JS files in src (TypeScript compiled output)
 src/**/*.js
 
+# Chrome Web Store package
+*.zip
+
 # OS files
 .DS_Store
 Thumbs.db

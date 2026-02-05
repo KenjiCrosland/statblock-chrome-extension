@@ -1,6 +1,6 @@
 {
   "manifest_version": 3,
-  "name": "StatBlock Auto-Fill",
+  "name": "Conjure Creature",
   "version": "1.0.0",
   "description": "Sync statblocks from cros.land and auto-fill Roll20 monster sheets",
   "permissions": [
@@ -11,7 +11,7 @@
   "host_permissions": [
     "https://cros.land/*",
     "https://app.roll20.net/*",
-    "https://storage.googleapis.com/*"
+    "https://storage.googleapis.com/roll20-cdn/*"
   ],
   "content_scripts": [
     {
@@ -26,7 +26,7 @@
     {
       "matches": [
         "https://app.roll20.net/*",
-        "https://storage.googleapis.com/*"
+        "https://storage.googleapis.com/roll20-cdn/*"
       ],
       "js": [
         "content-roll20.js"
